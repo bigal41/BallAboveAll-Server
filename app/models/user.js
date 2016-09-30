@@ -20,7 +20,9 @@ var UserSchema = new Schema({
    lastLogin: Date,
    resetPasswordToken: String,
    resetPasswordExpires: Date,
-   submitArticleFlag: Boolean
+   verified: Boolean,
+   pendingVerification: Boolean,
+   administrator: Boolean
 });
 
 UserSchema.pre('save', function(next) {

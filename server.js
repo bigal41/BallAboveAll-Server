@@ -72,7 +72,8 @@ apiRoutes.post('/register', function (req, res) {
       name: req.body.user.name,
       password: req.body.user.password,
       email: req.body.user.email,
-      submitArticleFlag: true //THIS NEEDS TO BE REMOVED IN THE FUTURE.
+      verified: false, //THIS NEEDS TO BE REMOVED IN THE FUTURE.
+      administrator: false
     });
 
     newUser.save(function (err) {
@@ -112,7 +113,8 @@ apiRoutes.post('/login', function (req, res) {
   });
 });
 
-apiRoutes.get('/getUser', passport.authenticate('jwt', { session: false }),
+//Get User
+apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
   function (req, res) {
     console.log(req.headers);
     var token = getToken(req.headers);
@@ -129,6 +131,7 @@ apiRoutes.get('/getUser', passport.authenticate('jwt', { session: false }),
   }
 );
 
+//Forgot Password
 apiRoutes.post('/forget', function (req, res) {
   User.findOne({email: req.body.email }, function(err, user) {
     if(err) throw err;
@@ -159,6 +162,7 @@ apiRoutes.post('/forget', function (req, res) {
   });
 });
 
+//Reset Password
 apiRoutes.post('/reset', function(req, res) {
   User.findOne({resetPasswordToken: req.body.token, resetPasswordExpires: {$gt : Date.now( ) } }, function( err, user ) {
     if( !user ) res.json({success: false, msg: 'Password reset token is invalid or has expired.'})
@@ -176,6 +180,7 @@ apiRoutes.post('/reset', function(req, res) {
   });
 });
 
+//Submit an Article
 apiRoutes.post('/submitArticle', function(req, res) {
 
     var token = getToken(req.headers);
@@ -203,13 +208,25 @@ apiRoutes.post('/submitArticle', function(req, res) {
     else res.status(403).send({ success: false, msg: 'No token provided.' });
 });
 
-apiRoutes.get('/getArticles', function(req, res) {
+//Retrieve Articles
+apiRoutes.get('/articles', function(req, res) {
   Article.find( {}, null, {sort: {updateDate: -1 }}, function(err, articles) {
     if(err) throw err;
     if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
     else res.json({success: true, articles: articles});
   })
 });
+
+//Verify a User
+apiRoutes.get('/verifyUser', function(req, res) {
+   var token = getToken(req.headers);
+   
+   //We want to make sure we have a token
+   if(token) {
+      
+   }
+   else res.status(403).send({ success: false, msg: 'No token provided.' });
+})
 
 //Private function to get token from headers.
 getToken = function (headers) {
