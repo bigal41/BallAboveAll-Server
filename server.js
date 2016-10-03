@@ -73,6 +73,7 @@ apiRoutes.post('/register', function (req, res) {
       password: req.body.user.password,
       email: req.body.user.email,
       verified: false, //THIS NEEDS TO BE REMOVED IN THE FUTURE.
+      pendingVerification: true,
       administrator: false
     });
 
@@ -120,7 +121,6 @@ apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
     var token = getToken(req.headers);
     if (token) {
       var decoded = jwt.decode(token, config.secret);
-      console.log(decoded.email);
       User.findOne({ email: decoded.email }, function (err, user) {
         if (err) throw err;
         if (!user) return res.status(403).send({ success: false, msg: 'Authentication Failed. User not found.' });
@@ -218,14 +218,51 @@ apiRoutes.get('/articles', function(req, res) {
 });
 
 //Verify a User
-apiRoutes.get('/verifyUser', function(req, res) {
+apiRoutes.post('/verifyUser', function(req, res) {
+
+  console.log(req.headers);
+
    var token = getToken(req.headers);
    
    //We want to make sure we have a token
    if(token) {
+
+     User.findOneAndUpdate({email: req.body.user.email}, { verified: true, pendingVerification: false },function(err, user) {
+       
+       if(err) throw err;
+       else if(!user) return res.status(403).send({success: false, msg: 'No User was updated'});
+       else {
+         
+         var mailOptions = {
+            to: user.email,
+            from: 'ralexclark@ralexclark.ca',
+            subject: 'You have have been verified',
+            text: 'Hello' + user.name + '\n\n' +
+                  'We have reviewed your application to be a verified author.\n\n' +
+                  'Ball Above All Staff'
+          };
+
+          smtpTransport.sendMail(mailOptions, function(err) {
+            if(err) throw err;
+            else res.json({success: true,  msg: user.name + ' has been verified. We have let them know.'});
+          });
+        
+       }
+     });
       
    }
+
    else res.status(403).send({ success: false, msg: 'No token provided.' });
+})
+
+//Get a pending verification users
+apiRoutes.get('/pendingVerification', function(req, res) {
+
+  User.find({pendingVerification: true}, function(err, users){
+    if(err) throw err;
+    else if(!users) res.json({success: false, msg: 'There were no users needed to be verified'});
+    else res.json({success: true, users: users});
+  });
 })
 
 //Private function to get token from headers.
