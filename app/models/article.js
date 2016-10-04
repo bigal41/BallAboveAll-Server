@@ -12,6 +12,10 @@ var ArticleSchema = new Schema({
       type: String,
       required: true
    },
+   authorUsername: {
+      type: String,
+      required: true,
+   },
    updateDate: {
       type: Date,
       required: true

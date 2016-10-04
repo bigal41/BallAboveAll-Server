@@ -69,11 +69,12 @@ apiRoutes.post('/register', function (req, res) {
   else
   {
     var newUser = new User({
+      username: req.body.user.username,
       name: req.body.user.name,
       password: req.body.user.password,
       email: req.body.user.email,
       verified: false, //THIS NEEDS TO BE REMOVED IN THE FUTURE.
-      pendingVerification: true,
+      pendingVerification: false,
       administrator: false
     });
 
@@ -89,7 +90,7 @@ apiRoutes.post('/register', function (req, res) {
 
 //Login
 apiRoutes.post('/login', function (req, res) {
-  User.findOne({ email: req.body.email }, function (err, user) {
+  User.findOne({ username: req.body.username }, function (err, user) {
     if (err) throw err;
 
     if (!user) {
@@ -101,7 +102,7 @@ apiRoutes.post('/login', function (req, res) {
           //if user is found and password is right create a token
           var token = jwt.encode(user, config.secret);
           //return the information including token as json
-          User.findOneAndUpdate({email: user.email}, { lastLogin: new Date() },function(err, user) {
+          User.findOneAndUpdate({username: user.username}, { lastLogin: new Date() },function(err, user) {
             res.json({ success: true, token: 'JWT ' + token, user: user });
           });
           
@@ -121,7 +122,7 @@ apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
     var token = getToken(req.headers);
     if (token) {
       var decoded = jwt.decode(token, config.secret);
-      User.findOne({ email: decoded.email }, function (err, user) {
+      User.findOne({ username: decoded.username }, function (err, user) {
         if (err) throw err;
         if (!user) return res.status(403).send({ success: false, msg: 'Authentication Failed. User not found.' });
         else res.json({ success: true, user: user});
@@ -135,11 +136,11 @@ apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
 apiRoutes.post('/forget', function (req, res) {
   User.findOne({email: req.body.email }, function(err, user) {
     if(err) throw err;
-    if(!user) res.json({success: false, msg:"Username is not found."});
+    if(!user) res.json({success: false, msg:"User was not found with this email."});
     else {
       crypto.randomBytes(20, function(err, buf) {
         var token = buf.toString('hex');
-        User.findOneAndUpdate({email:user.email}, {resetPasswordToken: token, resetPasswordExpires: Date.now() + 3600000}, function(err, user) {
+        User.findOneAndUpdate({username: user.username}, {resetPasswordToken: token, resetPasswordExpires: Date.now() + 3600000}, function(err, user) {
           
           var mailOptions = {
             to: user.email,
@@ -187,13 +188,15 @@ apiRoutes.post('/submitArticle', function(req, res) {
     if (token) 
     {
       if(!req.body.article.title) res.json({success: false, msg: 'Article missing a title'});
-      else if(!req.body.article.author) res.json({success: false, msg: 'Article missing an author'});
+      else if(!req.body.user.name) res.json({success: false, msg: 'Article missing an author'});
+      else if(!req.body.user.username) res.json({success: false, msg: 'Article missing an username'});
       else if(!req.body.article.updateDate) res.json({success: false, msg: 'Article missing a date'});
       else if(!req.body.article.text) res.json({success: false, msg: 'Article missing the article itself'});
       else {
         var newArticle = new Article({
           title: req.body.article.title,
-          author: req.body.article.author,
+          author: req.body.user.name,
+          authorUsername: req.body.user.username,
           updateDate: req.body.article.updateDate,
           text: req.body.article.text
         });
@@ -227,7 +230,7 @@ apiRoutes.post('/verifyUser', function(req, res) {
    //We want to make sure we have a token
    if(token) {
 
-     User.findOneAndUpdate({email: req.body.user.email}, { verified: true, pendingVerification: false },function(err, user) {
+     User.findOneAndUpdate({username: req.body.user.username}, { verified: true, pendingVerification: false },function(err, user) {
        
        if(err) throw err;
        else if(!user) return res.status(403).send({success: false, msg: 'No User was updated'});
@@ -237,7 +240,7 @@ apiRoutes.post('/verifyUser', function(req, res) {
             to: user.email,
             from: 'ralexclark@ralexclark.ca',
             subject: 'You have have been verified',
-            text: 'Hello' + user.name + '\n\n' +
+            text: 'Hello ' + user.name + '\n\n' +
                   'We have reviewed your application to be a verified author.\n\n' +
                   'Ball Above All Staff'
           };
@@ -253,7 +256,7 @@ apiRoutes.post('/verifyUser', function(req, res) {
    }
 
    else res.status(403).send({ success: false, msg: 'No token provided.' });
-})
+});
 
 //Get a pending verification users
 apiRoutes.get('/pendingVerification', function(req, res) {
@@ -263,7 +266,26 @@ apiRoutes.get('/pendingVerification', function(req, res) {
     else if(!users) res.json({success: false, msg: 'There were no users needed to be verified'});
     else res.json({success: true, users: users});
   });
-})
+});
+
+//Get profile for a user
+apiRoutes.post('/profileByUser', function(req, res) {
+  console.log(req.body);
+  User.findOne({username: req.body.username}, function(err, user){
+    if(err) throw err;
+    else if(!user) res.json({success: false, msg: 'No user with this username'});
+    else res.json( {success: true, user: { name: user.name, email: user.email, username: user.username, verified: user.verified } } );
+  });
+});
+
+//Retrieve Articles
+apiRoutes.post('/articlesByUser', function(req, res) {
+  Article.find( { authorUsername: req.body.username }, null, {sort: {updateDate: -1 }}, function(err, articles) {
+    if(err) throw err;
+    if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
+    else res.json({success: true, articles: articles});
+  })
+});
 
 //Private function to get token from headers.
 getToken = function (headers) {
