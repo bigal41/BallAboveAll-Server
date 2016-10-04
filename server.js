@@ -287,6 +287,16 @@ apiRoutes.post('/articlesByUser', function(req, res) {
   })
 });
 
+apiRoutes.post('/articleByID', function(req,res) {
+
+  Article.findOne( { _id: req.body.id }, function(err, article) {
+    if(err) throw err;
+    if(!article) return res.status(403).send({success: false, msg: 'No Article found'});
+    else res.json({success: true, article: article});
+  });
+
+});
+
 //Private function to get token from headers.
 getToken = function (headers) {
   if (headers && headers.authorization) {
