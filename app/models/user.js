@@ -27,7 +27,8 @@ var UserSchema = new Schema({
    resetPasswordExpires: Date,
    verified: Boolean,
    pendingVerification: Boolean,
-   administrator: Boolean
+   administrator: Boolean,
+   twitterName: String
 });
 
 UserSchema.pre('save', function(next) {
