@@ -30,7 +30,7 @@ var smtpTransport = nodemailer.createTransport(config.smtpConfig);
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-//app.use(express.static('./public')); 
+//app.use(express.static('./public'));
 
 //Log to console
 app.use(morgan('dev'));
@@ -59,7 +59,176 @@ mongoose.connect(config.database, {server : { poolSize:1 } } );
 
 require('./config/passport')(passport);
 
+
+////////////////////////////////////////////////////////////
+// Define Routes                                          //
+////////////////////////////////////////////////////////////
+
+//Define the express router
 var apiRoutes = express.Router();
+
+/**
+ * Get Routes
+ */
+
+//Retrieve Articles
+apiRoutes.get('/articles', function(req, res) {
+   Article.find( {}, null, {sort: {updateDate: -1 }}, function(err, articles) {
+     if(err) throw err;
+     if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
+     else res.json({success: true, articles: articles});
+   })
+ });
+
+//Get User
+apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
+   function (req, res) {
+     console.log(req.headers);
+     var token = getToken(req.headers);
+     if (token) {
+       var decoded = jwt.decode(token, config.secret);
+       User.findOne({ username: decoded.username }, function (err, user) {
+         if (err) throw err;
+         if (!user) return res.status(403).send({ success: false, msg: 'Authentication Failed. User not found.' });
+         else res.json({ success: true, user: user});
+       });
+     }
+     else res.status(403).send({ success: false, msg: 'No token provided.' });
+   }
+ );
+
+//Get a pending verification users
+apiRoutes.get('/pendingVerification', function(req, res) {
+
+   User.find({pendingVerification: true}, function(err, users){
+     if(err) throw err;
+     else if(!users) res.json({success: false, msg: 'There were no users needed to be verified'});
+     else res.json({success: true, users: users});
+   });
+});
+
+//Get all pending approval articles
+apiRoutes.get('/pendingApproval', function( req, res) {
+
+   Article.find({approved: false}, function(err, articles){
+      if(err) throw err;
+      else if(!users) res.json({success: false, msg: 'There were no articles that needed be approved'});
+      else res.json({success: true, articles: articles});
+   });
+
+});
+
+/**
+ * Post Routes
+ */
+
+//Approve the article
+apiRoutes.post('/approveArticle', function(req, res) {
+
+   var token = getToken(req.headers);
+
+   //We want to make sure we have a token
+   if(token) {
+
+      Article.findOneAndUpdate({title: req.body.article.title, authorUsername: req.body.article.authorUsername}, { approved: true}, function(err, article) {
+         if(err) throw err;
+         else if(!article) return res.status(403).send({success: false, msg: 'No Article was updated'});
+         else {
+            //NOTE: Do we mail the original author and let them know if their article has been approved?
+            return res.json({success: true, msg: "Article has been approved"});
+         }
+      });
+   }
+   else res.status(403).send({ success: false, msg: 'No token provided.' });
+});
+
+//Retireve article by ID
+apiRoutes.post('/articleByID', function(req,res) {
+
+   Article.findOne( { _id: req.body.id }, function(err, article) {
+     if(err) throw err;
+     if(!article) return res.status(403).send({success: false, msg: 'No Article found'});
+     else res.json({success: true, article: article});
+   });
+
+ });
+
+//Retrieve Articles by user
+apiRoutes.post('/articlesByUser', function(req, res) {
+   Article.find( { authorUsername: req.body.username }, null, {sort: {updateDate: -1 }}, function(err, articles) {
+     if(err) throw err;
+     if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
+     else res.json({success: true, articles: articles});
+   })
+ });
+
+//Forgot Password
+apiRoutes.post('/forget', function (req, res) {
+   User.findOne({email: req.body.email }, function(err, user) {
+     if(err) throw err;
+     if(!user) res.json({success: false, msg:"User was not found with this email."});
+     else {
+       crypto.randomBytes(20, function(err, buf) {
+         var token = buf.toString('hex');
+         User.findOneAndUpdate({username: user.username}, {resetPasswordToken: token, resetPasswordExpires: Date.now() + 3600000}, function(err, user) {
+
+           var mailOptions = {
+             to: user.email,
+             from: 'ralexclark@ralexclark.ca',
+             subject: 'Node.js Password Reset',
+             text: 'You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n' +
+                   'Please click on the following link, or paste this into your browser to complete the process:\n\n' +
+                   req.headers.referer + "/#/reset/" + token + '\n\n' +
+                   'If you did not request this, please ignore this email and your password will remain unchanged.\n'
+           };
+
+           smtpTransport.sendMail(mailOptions, function(err) {
+             if(err) throw err;
+             else  res.json({ success:'true', msg: 'An e-mail has been sent to ' + user.email + ' with further instructions.' });
+           });
+
+         })
+       });
+     }
+   });
+ });
+
+//Login
+apiRoutes.post('/login', function (req, res) {
+   User.findOne({ username: req.body.username }, function (err, user) {
+     if (err) throw err;
+
+     if (!user) {
+       res.send({ success: false, msg: 'Authentication failed. User not found.' });
+     }
+     else {
+       user.comparePassword(req.body.password, function (err, isMatch) {
+         if (isMatch && !err) {
+           //if user is found and password is right create a token
+           var token = jwt.encode(user, config.secret);
+           //return the information including token as json
+           User.findOneAndUpdate({username: user.username}, { lastLogin: new Date() },function(err, user) {
+             res.json({ success: true, token: 'JWT ' + token, user: user });
+           });
+
+         }
+         else {
+           res.send({ success: false, msg: 'Authenication failed. Wrong password.' });
+         }
+       });
+     }
+   });
+ });
+
+//Get profile for a user
+apiRoutes.post('/profileByUser', function(req, res) {
+   console.log(req.body);
+   User.findOne({username: req.body.username}, function(err, user){
+     if(err) throw err;
+     else if(!user) res.json({success: false, msg: 'No user with this username'});
+     else res.json( {success: true, user: { name: user.name, email: user.email, username: user.username, verified: user.verified } } );
+   });
+ });
 
 //Register
 apiRoutes.post('/register', function (req, res) {
@@ -88,87 +257,12 @@ apiRoutes.post('/register', function (req, res) {
   }
 });
 
-//Login
-apiRoutes.post('/login', function (req, res) {
-  User.findOne({ username: req.body.username }, function (err, user) {
-    if (err) throw err;
-
-    if (!user) {
-      res.send({ success: false, msg: 'Authentication failed. User not found.' });
-    }
-    else {
-      user.comparePassword(req.body.password, function (err, isMatch) {
-        if (isMatch && !err) {
-          //if user is found and password is right create a token
-          var token = jwt.encode(user, config.secret);
-          //return the information including token as json
-          User.findOneAndUpdate({username: user.username}, { lastLogin: new Date() },function(err, user) {
-            res.json({ success: true, token: 'JWT ' + token, user: user });
-          });
-          
-        }
-        else {
-          res.send({ success: false, msg: 'Authenication failed. Wrong password.' });
-        }
-      });
-    }
-  });
-});
-
-//Get User
-apiRoutes.get('/user', passport.authenticate('jwt', { session: false }),
-  function (req, res) {
-    console.log(req.headers);
-    var token = getToken(req.headers);
-    if (token) {
-      var decoded = jwt.decode(token, config.secret);
-      User.findOne({ username: decoded.username }, function (err, user) {
-        if (err) throw err;
-        if (!user) return res.status(403).send({ success: false, msg: 'Authentication Failed. User not found.' });
-        else res.json({ success: true, user: user});
-      });
-    }
-    else res.status(403).send({ success: false, msg: 'No token provided.' });
-  }
-);
-
-//Forgot Password
-apiRoutes.post('/forget', function (req, res) {
-  User.findOne({email: req.body.email }, function(err, user) {
-    if(err) throw err;
-    if(!user) res.json({success: false, msg:"User was not found with this email."});
-    else {
-      crypto.randomBytes(20, function(err, buf) {
-        var token = buf.toString('hex');
-        User.findOneAndUpdate({username: user.username}, {resetPasswordToken: token, resetPasswordExpires: Date.now() + 3600000}, function(err, user) {
-          
-          var mailOptions = {
-            to: user.email,
-            from: 'ralexclark@ralexclark.ca',
-            subject: 'Node.js Password Reset',
-            text: 'You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n' +
-                  'Please click on the following link, or paste this into your browser to complete the process:\n\n' +
-                  req.headers.referer + "/#/reset/" + token + '\n\n' +
-                  'If you did not request this, please ignore this email and your password will remain unchanged.\n'
-          };
-
-          smtpTransport.sendMail(mailOptions, function(err) {
-            if(err) throw err;
-            else  res.json({ success:'true', msg: 'An e-mail has been sent to ' + user.email + ' with further instructions.' });
-          });
-
-        })
-      });
-    }
-  });
-});
-
 //Reset Password
 apiRoutes.post('/reset', function(req, res) {
   User.findOne({resetPasswordToken: req.body.token, resetPasswordExpires: {$gt : Date.now( ) } }, function( err, user ) {
     if( !user ) res.json({success: false, msg: 'Password reset token is invalid or has expired.'})
     else {
-      
+
       user.password = req.body.password;
       user.resetPasswordToken = '';
       user.resetPasswordExpires = '';
@@ -185,7 +279,7 @@ apiRoutes.post('/reset', function(req, res) {
 apiRoutes.post('/submitArticle', function(req, res) {
 
     var token = getToken(req.headers);
-    if (token) 
+    if (token)
     {
       if(!req.body.article.title) res.json({success: false, msg: 'Article missing a title'});
       else if(!req.body.user.name) res.json({success: false, msg: 'Article missing an author'});
@@ -198,7 +292,8 @@ apiRoutes.post('/submitArticle', function(req, res) {
           author: req.body.user.name,
           authorUsername: req.body.user.username,
           updateDate: req.body.article.updateDate,
-          text: req.body.article.text
+          text: req.body.article.text,
+          approved: false
         });
 
         newArticle.save( function (err) {
@@ -206,95 +301,43 @@ apiRoutes.post('/submitArticle', function(req, res) {
 
           res.json({ success: true, msg: 'Success created a new article'});
         });
-      } 
+      }
     }
     else res.status(403).send({ success: false, msg: 'No token provided.' });
-});
-
-//Retrieve Articles
-apiRoutes.get('/articles', function(req, res) {
-  Article.find( {}, null, {sort: {updateDate: -1 }}, function(err, articles) {
-    if(err) throw err;
-    if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
-    else res.json({success: true, articles: articles});
-  })
 });
 
 //Verify a User
 apiRoutes.post('/verifyUser', function(req, res) {
 
-  console.log(req.headers);
-
    var token = getToken(req.headers);
-   
+
    //We want to make sure we have a token
    if(token) {
 
-     User.findOneAndUpdate({username: req.body.user.username}, { verified: true, pendingVerification: false },function(err, user) {
-       
-       if(err) throw err;
-       else if(!user) return res.status(403).send({success: false, msg: 'No User was updated'});
-       else {
-         
-         var mailOptions = {
-            to: user.email,
-            from: 'ralexclark@ralexclark.ca',
-            subject: 'You have have been verified',
-            text: 'Hello ' + user.name + '\n\n' +
-                  'We have reviewed your application to be a verified author.\n\n' +
-                  'Ball Above All Staff'
-          };
+      User.findOneAndUpdate({username: req.body.user.username}, { verified: true, pendingVerification: false },function(err, user) {
 
-          smtpTransport.sendMail(mailOptions, function(err) {
-            if(err) throw err;
-            else res.json({success: true,  msg: user.name + ' has been verified. We have let them know.'});
-          });
-        
-       }
-     });
-      
+         if(err) throw err;
+         else if(!user) return res.status(403).send({success: false, msg: 'No User was updated'});
+         else {
+
+            var mailOptions = {
+               to: user.email,
+               from: 'ralexclark@ralexclark.ca',
+               subject: 'You have have been verified',
+               text: 'Hello ' + user.name + '\n\n' +
+                     'We have reviewed your application to be a verified author.\n\n' +
+                     'Ball Above All Staff'
+            };
+
+            smtpTransport.sendMail(mailOptions, function(err) {
+               if(err) throw err;
+               else res.json({success: true,  msg: user.name + ' has been verified. We have let them know.'});
+            });
+
+         }
+      });
    }
-
    else res.status(403).send({ success: false, msg: 'No token provided.' });
-});
-
-//Get a pending verification users
-apiRoutes.get('/pendingVerification', function(req, res) {
-
-  User.find({pendingVerification: true}, function(err, users){
-    if(err) throw err;
-    else if(!users) res.json({success: false, msg: 'There were no users needed to be verified'});
-    else res.json({success: true, users: users});
-  });
-});
-
-//Get profile for a user
-apiRoutes.post('/profileByUser', function(req, res) {
-  console.log(req.body);
-  User.findOne({username: req.body.username}, function(err, user){
-    if(err) throw err;
-    else if(!user) res.json({success: false, msg: 'No user with this username'});
-    else res.json( {success: true, user: { name: user.name, email: user.email, username: user.username, verified: user.verified } } );
-  });
-});
-
-//Retrieve Articles
-apiRoutes.post('/articlesByUser', function(req, res) {
-  Article.find( { authorUsername: req.body.username }, null, {sort: {updateDate: -1 }}, function(err, articles) {
-    if(err) throw err;
-    if(!articles) return res.status(403).send({success: false, msg: 'No articles found'});
-    else res.json({success: true, articles: articles});
-  })
-});
-
-apiRoutes.post('/articleByID', function(req,res) {
-
-  Article.findOne( { _id: req.body.id }, function(err, article) {
-    if(err) throw err;
-    if(!article) return res.status(403).send({success: false, msg: 'No Article found'});
-    else res.json({success: true, article: article});
-  });
-
 });
 
 //Private function to get token from headers.

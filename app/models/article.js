@@ -23,6 +23,10 @@ var ArticleSchema = new Schema({
    text: {
       type: String,
       required: true
+   },
+   approved: {
+      type: Boolean,
+      required: true
    }
 });
 
