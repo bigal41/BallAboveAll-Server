@@ -98,7 +98,7 @@ apiRoutes.get('/user', passport.authenticate('jwt', {
       session: false
    }),
    function (req, res) {
-      console.log(req.headers);
+      
       var token = getToken(req.headers);
       if (token) {
          var decoded = jwt.decode(token, config.secret);
@@ -143,18 +143,10 @@ apiRoutes.get('/pendingVerification', function (req, res) {
 //Get all pending approval articles
 apiRoutes.get('/pendingApproval', function (req, res) {
 
-   Article.find({
-      approved: false
-   }, function (err, articles) {
+   Article.find({ approved: false }, function (err, articles) {
       if (err) throw err;
-      else if (!users) res.json({
-         success: false,
-         msg: 'There were no articles that needed be approved'
-      });
-      else res.json({
-         success: true,
-         articles: articles
-      });
+      else if (!articles) res.json({ success: false, msg: 'There were no articles that needed be approved' });
+      else res.json({ success: true, articles: articles });
    });
 
 });
@@ -323,7 +315,7 @@ apiRoutes.post('/login', function (req, res) {
 
 //Get profile for a user
 apiRoutes.post('/profileByUser', function (req, res) {
-   console.log(req.body);
+
    User.findOne({
       username: req.body.username
    }, function (err, user) {
