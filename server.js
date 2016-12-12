@@ -7,6 +7,9 @@ var jwt = require('jwt-simple');
 var nodemailer = require('nodemailer');
 var async = require('async');
 var crypto = require('crypto');
+var http = require('http');
+var https = require('https');
+var fs = require('fs');
 
 //Database config
 var config = require('./config/database');
@@ -17,6 +20,9 @@ var Article = require('./app/models/article');
 
 //Define our express app
 var app = express();
+
+//Define a non secure app.
+var nonSecureApp = express();
 
 //Define the port our server will run on
 var port = process.env.PORT || 8080;
@@ -53,6 +59,10 @@ app.all('/*', function (req, res, next) {
 //Demo Route
 app.get('/', function (req, res) {
    res.send('Hello! The app is at http://ballabove.ralexclark.ca:' + port + '/api');
+});
+
+nonSecureApp.get('/', function( req, res) {
+   res.send('This connection is non secure! Please use our secure API which is located at https://ballabove.ralexclark.ca:' + port + '/api');
 });
 
 mongoose.connect(config.database, {
@@ -126,6 +136,13 @@ apiRoutes.get('/user', passport.authenticate('jwt', {
 apiRoutes.get('/pendingVerification', function (req, res) {
 
    User.find({
+      pendingVerification: true
+   }, function (err, users) {
+      if (err) throw err;
+      else if (!users) res.json({
+         success: false,
+         msg: 'There were no users needed to be verified'
+      });
       pendingVerification: true
    }, function (err, users) {
       if (err) throw err;
@@ -516,6 +533,24 @@ getToken = function (headers) {
 
 app.use('/api', apiRoutes);
 
-var server = app.listen(port, function () {
-   console.log('Express server listening on port ' + port);
+//var server = app.listen(port, function () {
+//   console.log('Express server listening on port ' + port);
+//});
+
+//http.createServer(app).listen(port, function() {
+//   console.log('Express server listening on port ' + port);
+//});
+
+var sslOptions = {
+   key: fs.readFileSync('./tls/key.pem'),
+   cert: fs.readFileSync('./tls/cert.pem')
+};
+
+http.createServer( nonSecureApp ).listen(8181, function() {
+   console.log('Express server listening on port ' + 8181);
 });
+
+https.createServer( sslOptions, app ).listen( 8080, function(){
+   console.log('Secure express server listening on port ' + 8080);
+});
+
