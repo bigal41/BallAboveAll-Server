@@ -1,3 +1,5 @@
 config/database.js
 node_modules
 .jsbeautifyrc
+
+*.pem
