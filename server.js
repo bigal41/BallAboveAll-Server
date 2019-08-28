@@ -58,7 +58,7 @@ app.all('/*', function (req, res, next) {
 
 //Demo Route
 app.get('/', function (req, res) {
-   res.send('Hello! The app is at http://ballabove.ralexclark.ca:' + port + '/api');
+   res.send('Hello! The app is at https://ballabove.ralexclark.ca:' + port + '/api');
 });
 
 nonSecureApp.get('/', function( req, res) {
@@ -108,7 +108,7 @@ apiRoutes.get('/user', passport.authenticate('jwt', {
       session: false
    }),
    function (req, res) {
-      
+
       var token = getToken(req.headers);
       if (token) {
          var decoded = jwt.decode(token, config.secret);
@@ -143,7 +143,7 @@ apiRoutes.get('/pendingVerification', function (req, res) {
          success: false,
          msg: 'There were no users needed to be verified'
       });
-      pendingVerification: true
+      pendingVerification: true;
    }, function (err, users) {
       if (err) throw err;
       else if (!users) res.json({
@@ -542,8 +542,12 @@ app.use('/api', apiRoutes);
 //});
 
 var sslOptions = {
-   key: fs.readFileSync('./tls/key.pem'),
-   cert: fs.readFileSync('./tls/cert.pem')
+   //key: fs.readFileSync('./tls/key.pem'),
+   //cert: fs.readFileSync('./tls/cert.pem')
+
+   key: fs.readFileSync('tls/key.pem'),
+   cert: fs.readFileSync('tls/cert.pem'),
+   passphrase: 'BallAboveAll'
 };
 
 http.createServer( nonSecureApp ).listen(8181, function() {
@@ -553,4 +557,3 @@ http.createServer( nonSecureApp ).listen(8181, function() {
 https.createServer( sslOptions, app ).listen( 8080, function(){
    console.log('Secure express server listening on port ' + 8080);
 });
-
