@@ -16,7 +16,7 @@
     "express": "~4.9.8",
     "jwt-simple": "^0.3.1",
     "letsencrypt-express": "^2.0.5",
-    "mongoose": "~4.2.4",
+    "mongoose": "~5.7.7",
     "morgan": "~1.5.0",
     "nodemailer": "^2.6.0",
     "passport": "^0.3.0",
